@@ -131,10 +131,16 @@ function verifyToken(req, res, next) {
   });
 }
 
+// NEW: helper (place near verifyToken)
+function getUserIdFromReq(req) {
+  return typeof req.user.id === 'string' ? new ObjectId(req.user.id) : req.user.id;
+}
+
 
 // Journal entries
 // CREATE journal entry
-app.post('/journal', async (req, res) => {
+// CREATE journal entry  (modified)
+app.post('/journal', verifyToken, async (req, res) => {
   const { title, description, image } = req.body;
   if (!title) return res.status(400).json({ message: 'Title is required' });
 
@@ -142,6 +148,7 @@ app.post('/journal', async (req, res) => {
   const db = getDB();
 
   const result = await db.collection('journalLogs').insertOne({
+    userId: getUserIdFromReq(req),       // <— added
     title,
     description: description || '',
     image: image || '',
@@ -160,15 +167,22 @@ app.post('/journal', async (req, res) => {
   });
 });
 
+
 // READ all journal entries
-app.get('/journal', async (req, res) => {
-  const entries = await getDB().collection('journalLogs').find().toArray();
+// READ all journal entries (modified)
+app.get('/journal', verifyToken, async (req, res) => {
+  const userId = getUserIdFromReq(req);
+  const entries = await getDB()
+    .collection('journalLogs')
+    .find({ userId })            // <— filter by current user
+    .toArray();
   res.json(entries);
 });
 
 
 // UPDATE an entry
-app.put('/journal/:id', async (req, res) => {
+// UPDATE an entry (modified)
+app.put('/journal/:id', verifyToken, async (req, res) => {
   const { ObjectId } = require('mongodb');
   const { title, description, image } = req.body;
 
@@ -182,20 +196,29 @@ app.put('/journal/:id', async (req, res) => {
   }
 
   const result = await getDB().collection('journalLogs').findOneAndUpdate(
-    { _id: new ObjectId(req.params.id) },
+    { _id: new ObjectId(req.params.id), userId: getUserIdFromReq(req) }, // <— scoped
     { $set: update },
     { returnDocument: 'after' }
   );
 
+  if (!result.value) return res.status(404).json({ message: 'Entry not found' });
+
   res.json({ message: 'Entry updated', entry: result.value });
 });
 
+
 // DELETE an entry
-app.delete('/journal/:id', async (req, res) => {
+// DELETE an entry (modified)
+app.delete('/journal/:id', verifyToken, async (req, res) => {
   const { ObjectId } = require('mongodb');
-  await getDB().collection('journalLogs').deleteOne({ _id: new ObjectId(req.params.id) });
+  const result = await getDB().collection('journalLogs').deleteOne({
+    _id: new ObjectId(req.params.id),
+    userId: getUserIdFromReq(req)     // <— scoped
+  });
+  if (result.deletedCount === 0) return res.status(404).json({ message: 'Entry not found' });
   res.json({ message: 'Entry deleted' });
 });
+
 
 
 // Dog profile
@@ -251,37 +274,75 @@ app.post('/progress', async (req, res) => {
 });
 
 // Schedule
-app.get('/schedule', async (req, res) => {
-  const events = await getDB().collection('scheduleEvents').find().toArray();
+// GET all schedule events for current user
+app.get('/schedule', verifyToken, async (req, res) => {
+  const userId = getUserIdFromReq(req);
+  const events = await getDB()
+    .collection('scheduleEvents')
+    .find({ userId })
+    .toArray();
+
   res.status(200).json(events);
 });
 
-app.post('/schedule', async (req, res) => {
+// CREATE schedule event
+app.post('/schedule', verifyToken, async (req, res) => {
   const { title, content, start, end } = req.body;
-  if (!title || !start || !end) return res.status(400).json({ message: 'Missing required fields' });
+  if (!title || !start || !end) {
+    return res.status(400).json({ message: 'Missing required fields' });
+  }
 
-  const result = await getDB().collection('scheduleEvents').insertOne({ title, content, start, end });
-  res.status(201).json({ message: 'Event added successfully', event: { id: result.insertedId, title, content, start, end } });
+  const userId = getUserIdFromReq(req);
+  const result = await getDB().collection('scheduleEvents').insertOne({
+    userId,
+    title,
+    content,
+    start,
+    end
+  });
+
+  res.status(201).json({
+    message: 'Event added successfully',
+    event: { id: result.insertedId, title, content, start, end }
+  });
 });
 
-app.delete('/schedule/:id', async (req, res) => {
+// DELETE schedule event
+app.delete('/schedule/:id', verifyToken, async (req, res) => {
   const { ObjectId } = require('mongodb');
-  await getDB().collection('scheduleEvents').deleteOne({ _id: new ObjectId(req.params.id) });
+  const userId = getUserIdFromReq(req);
+
+  const result = await getDB().collection('scheduleEvents').deleteOne({
+    _id: new ObjectId(req.params.id),
+    userId
+  });
+
+  if (result.deletedCount === 0) {
+    return res.status(404).json({ message: 'Event not found' });
+  }
+
   res.json({ message: 'Event deleted' });
 });
 
-app.put('/schedule/:id', async (req, res) => {
+// UPDATE schedule event
+app.put('/schedule/:id', verifyToken, async (req, res) => {
   const { ObjectId } = require('mongodb');
   const { title, content, start, end } = req.body;
+  const userId = getUserIdFromReq(req);
 
   const result = await getDB().collection('scheduleEvents').findOneAndUpdate(
-    { _id: new ObjectId(req.params.id) },
+    { _id: new ObjectId(req.params.id), userId },
     { $set: { title, content, start, end } },
     { returnDocument: 'after' }
   );
 
+  if (!result.value) {
+    return res.status(404).json({ message: 'Event not found' });
+  }
+
   res.json({ message: 'Event updated', event: result.value });
 });
+
 
 app.get('/comments', async (req, res) => {
   const { componentId } = req.query;
