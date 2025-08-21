@@ -22,28 +22,6 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static('uploads'));
 
 
-/*const nodemailer = require('nodemailer');
-
-let transporter;
-
-async function setupMailer() {
-  const testAccount = await nodemailer.createTestAccount();
-
-  transporter = nodemailer.createTransport({
-    host: testAccount.smtp.host,
-    port: testAccount.smtp.port,
-    secure: testAccount.smtp.secure,
-    auth: {
-      user: testAccount.user,
-      pass: testAccount.pass
-    }
-  });
-
-  console.log(' Ethereal email account created');
-  console.log(' Login:', testAccount.user);
-  console.log(' Pass:', testAccount.pass);
-}*/
-
 
 
 // Multer setup
@@ -114,7 +92,7 @@ app.post('/login', async (req, res) => {
   if (!match) return res.status(401).json({ message: 'Invalid credentials' });
 
   const tokenPayload = { id: user._id, email: user.email, name: user.name, role: 'user' };
-  const token = jwt.sign(tokenPayload, SECRET_KEY, { expiresIn: '4h' });
+  const token = jwt.sign(tokenPayload, SECRET_KEY, { expiresIn: '1h' }); 
 
   res.status(200).json({ message: 'Login successful!', user: { id: user._id, email: user.email, name: user.name, token } });
 });
