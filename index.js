@@ -12,7 +12,7 @@ connectDB();
 
 const app = express();
 const PORT = 3000;
-const SECRET_KEY = 'your_super_secret_key';
+const SECRET_KEY = '24254jkgkfir';
 
 app.use(cors());
 app.use(express.json());
@@ -448,7 +448,7 @@ app.post('/forgot-password', async (req, res) => {
 
   await db.collection('passwordResets').insertOne({ userId: user._id, token, expiresAt });
 
-  const resetLink = `http://localhost:8080/reset-password?token=${token}`;
+  const resetLink = `https://barkwise.netlify.app/reset-password?token=${token}`;
 
   const mailOptions = {
     from: '"Barkwise Collie 🐾" <no-reply@barkwise.com>',
