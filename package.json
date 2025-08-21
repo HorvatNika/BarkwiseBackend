@@ -6,7 +6,8 @@
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.17.0",
     "multer": "^2.0.2",
-    "nodemailer": "^7.0.5"
+    "nodemailer": "^7.0.5",
+    "resend": "^6.0.1"
   },
   "name": "barkwiseback",
   "version": "1.0.0",
