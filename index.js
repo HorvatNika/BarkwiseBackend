@@ -7,12 +7,14 @@ const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const { connectDB, getDB } = require('./db');
 const { ObjectId } = require('mongodb'); 
+const { sendEmail } = require('./mailer');
+const crypto = require('crypto');
 
 connectDB();
 
 const app = express();
 const PORT = 3000;
-const SECRET_KEY = '24254jkgkfir';
+const SECRET_KEY = 'your_super_secret_key';
 
 app.use(cors());
 app.use(express.json());
@@ -20,7 +22,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static('uploads'));
 
 
-const nodemailer = require('nodemailer');
+/*const nodemailer = require('nodemailer');
 
 let transporter;
 
@@ -40,7 +42,7 @@ async function setupMailer() {
   console.log(' Ethereal email account created');
   console.log(' Login:', testAccount.user);
   console.log(' Pass:', testAccount.pass);
-}
+}*/
 
 
 
@@ -432,7 +434,7 @@ app.get('/test-mongo', async (req, res) => {
   res.json({ message: 'Inserted into MongoDB', id: result.insertedId });
 });
 
-const crypto = require('crypto');
+
 
 app.post('/forgot-password', async (req, res) => {
   console.log(' forgot-password endpoint hit');
@@ -441,38 +443,36 @@ app.post('/forgot-password', async (req, res) => {
 
   const db = getDB();
   const user = await db.collection('users').findOne({ email });
-  if (!user) return res.status(200).json({ message: 'If that email exists, a reset link has been sent.' });
+
+  // Always respond the same to avoid leaking which emails exist
+  if (!user) {
+    return res.status(200).json({ message: 'If that email exists, a reset link has been sent.' });
+  }
 
   const token = crypto.randomBytes(32).toString('hex');
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
   await db.collection('passwordResets').insertOne({ userId: user._id, token, expiresAt });
 
   const resetLink = `https://barkwise.netlify.app/reset-password?token=${token}`;
 
-  const mailOptions = {
-    from: '"Barkwise Collie 🐾" <no-reply@barkwise.com>',
-    to: email,
-    subject: 'Reset Your Password',
-    html: `
-      <h3>Hello ${user.name || ''},</h3>
-      <p>We received a request to reset your password. Click the link below to set a new password:</p>
-      <a href="${resetLink}" target="_blank">${resetLink}</a>
-      <p><i>This link will expire in 15 minutes.</i></p>
-    `
-  };
+  const html = `
+    <h3>Hello ${user.name || ''},</h3>
+    <p>We received a request to reset your password. Click the link below to set a new password:</p>
+    <a href="${resetLink}" target="_blank">${resetLink}</a>
+    <p><i>This link will expire in 15 minutes.</i></p>
+  `;
 
   try {
-    const info = await transporter.sendMail(mailOptions);
-    const previewUrl = nodemailer.getTestMessageUrl(info);
-    console.log(` Preview Email URL: ${previewUrl}`);
-
-    res.status(200).json({ message: 'If that email exists, a reset link has been sent.', previewUrl });
+    // Use your verified sender when ready (e.g., 'no-reply@barkwise.com')
+    await sendEmail(email, 'Reset Your Password', html, 'onboarding@resend.dev');
+    return res.status(200).json({ message: 'If that email exists, a reset link has been sent.' });
   } catch (error) {
     console.error(' Email send failed:', error);
-    res.status(500).json({ message: 'Failed to send email' });
+    return res.status(500).json({ message: 'Failed to send email' });
   }
 });
+
 
 
 
@@ -536,8 +536,22 @@ app.post('/dog-weight-history', async (req, res) => {
 
 
 
-setupMailer().then(() => {
-  app.listen(3000, () => {
-    console.log(' Server running at http://localhost:3000');
-  });
+
+app.post('/test-email', async (req, res) => {
+  try {
+    await sendEmail(
+      'nikahorvat1311@gmail.com',
+      'Hello World',
+      '<p>Congrats on sending your <strong>first email</strong>!</p>'
+    );
+    res.json({ message: 'Email sent successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Email failed', error: error.message });
+  }
 });
+
+
+app.listen(PORT, () => {
+  console.log(` Server running at http://localhost:${PORT}`);
+});
+
