@@ -21,9 +21,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static('uploads'));
 
-
-
-
 // Multer setup
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, 'uploads/'),
@@ -78,7 +75,6 @@ app.post('/register', upload.single('profilePicture'), async (req, res) => {
   });
 });
 
-
 // Login
 app.post('/login', async (req, res) => {
   const { email, password } = req.body;
@@ -97,8 +93,6 @@ app.post('/login', async (req, res) => {
   res.status(200).json({ message: 'Login successful!', user: { id: user._id, email: user.email, name: user.name, token } });
 });
 
-
-
 function verifyToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader?.split(' ')[1];
@@ -111,15 +105,12 @@ function verifyToken(req, res, next) {
   });
 }
 
-// NEW: helper (place near verifyToken)
 function getUserIdFromReq(req) {
   return typeof req.user.id === 'string' ? new ObjectId(req.user.id) : req.user.id;
 }
 
-
 // Journal entries
 // CREATE journal entry
-// CREATE journal entry  (modified)
 app.post('/journal', verifyToken, async (req, res) => {
   const { title, description, image } = req.body;
   if (!title) return res.status(400).json({ message: 'Title is required' });
@@ -128,7 +119,7 @@ app.post('/journal', verifyToken, async (req, res) => {
   const db = getDB();
 
   const result = await db.collection('journalLogs').insertOne({
-    userId: getUserIdFromReq(req),       // <— added
+    userId: getUserIdFromReq(req),     
     title,
     description: description || '',
     image: image || '',
@@ -147,21 +138,17 @@ app.post('/journal', verifyToken, async (req, res) => {
   });
 });
 
-
 // READ all journal entries
-// READ all journal entries (modified)
 app.get('/journal', verifyToken, async (req, res) => {
   const userId = getUserIdFromReq(req);
   const entries = await getDB()
     .collection('journalLogs')
-    .find({ userId })            // <— filter by current user
+    .find({ userId })            
     .toArray();
   res.json(entries);
 });
 
-
 // UPDATE an entry
-// UPDATE an entry (modified)
 app.put('/journal/:id', verifyToken, async (req, res) => {
   const { ObjectId } = require('mongodb');
   const { title, description, image } = req.body;
@@ -176,7 +163,7 @@ app.put('/journal/:id', verifyToken, async (req, res) => {
   }
 
   const result = await getDB().collection('journalLogs').findOneAndUpdate(
-    { _id: new ObjectId(req.params.id), userId: getUserIdFromReq(req) }, // <— scoped
+    { _id: new ObjectId(req.params.id), userId: getUserIdFromReq(req) }, 
     { $set: update },
     { returnDocument: 'after' }
   );
@@ -186,22 +173,17 @@ app.put('/journal/:id', verifyToken, async (req, res) => {
   res.json({ message: 'Entry updated', entry: result.value });
 });
 
-
 // DELETE an entry
-// DELETE an entry (modified)
 app.delete('/journal/:id', verifyToken, async (req, res) => {
   const { ObjectId } = require('mongodb');
   const result = await getDB().collection('journalLogs').deleteOne({
     _id: new ObjectId(req.params.id),
-    userId: getUserIdFromReq(req)     // <— scoped
+    userId: getUserIdFromReq(req)  
   });
   if (result.deletedCount === 0) return res.status(404).json({ message: 'Entry not found' });
   res.json({ message: 'Entry deleted' });
 });
 
-
-
-// Dog profile
 app.get('/dogprofile', async (req, res) => {
   const profile = await getDB().collection('dogProfile').findOne();
   res.status(200).json({ message: 'Dog profile route reached', dogProfile: profile });
@@ -219,39 +201,66 @@ app.post('/dogprofile', async (req, res) => {
 });
 
 
+app.put('/profile', verifyToken, upload.single('profilePicture'), async (req, res) => {
+  try {
+    const db = getDB();
+    const usersCollection = db.collection('users');
+    const userId = getUserIdFromReq(req);
+
+    if (!userId) return res.status(401).json({ message: 'Invalid user' });
+
+    const updateFields = {};
+
+    if (req.body.name) updateFields.name = req.body.name;
+    if (req.body.birthday) updateFields.birthday = req.body.birthday;
+    if (req.body.colorPattern) updateFields.colorPattern = req.body.colorPattern;
+    if (req.file) updateFields.profilePicture = req.file.filename;
+
+    const updatedUser = await usersCollection.findOneAndUpdate(
+      { _id: userId },
+      { $set: updateFields },
+      { returnDocument: 'after' } 
+    );
+
+    if (!updatedUser.value) return res.status(404).json({ message: 'User not found' });
+
+    res.json({
+      message: 'Profile updated successfully',
+      user: {
+        id: updatedUser.value._id,
+        name: updatedUser.value.name,
+        birthday: updatedUser.value.birthday,
+        colorPattern: updatedUser.value.colorPattern,
+        email: updatedUser.value.email,
+        profilePicture: updatedUser.value.profilePicture ? `/uploads/${updatedUser.value.profilePicture}` : null
+      }
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to update profile' });
+  }
+});
+
 app.get('/profile', verifyToken, async (req, res) => {
   const db = getDB();
+  const usersCollection = db.collection('users');
 
-
-  const userId = typeof req.user.id === 'string' ? new ObjectId(req.user.id) : req.user.id;
-  const user = await db.collection('users').findOne({ _id: userId });
+  const userId = getUserIdFromReq(req);
+  const user = await usersCollection.findOne({ _id: userId });
 
   if (!user) return res.status(404).json({ message: 'User not found' });
 
   res.json({
-  name: user.name,
-  birthday: user.birthday,
-  colorPattern: user.colorPattern,
-  email: user.email,
-  profilePicture: user.profilePicture ? `/uploads/${user.profilePicture}` : null
+    id: user._id,
+    name: user.name,
+    birthday: user.birthday || null,
+    colorPattern: user.colorPattern || null,
+    email: user.email,
+    profilePicture: user.profilePicture ? `/uploads/${user.profilePicture}` : null,
+  });
 });
 
-});
-
-
-// Training progress
-app.get('/progress', async (req, res) => {
-  const milestones = await getDB().collection('trainingProgress').find().toArray();
-  res.status(200).json({ message: 'Training progress data', milestones });
-});
-
-app.post('/progress', async (req, res) => {
-  const { skill, status } = req.body;
-  if (!skill || !status) return res.status(400).json({ message: 'Skill and status required' });
-
-  const result = await getDB().collection('trainingProgress').insertOne({ skill, status });
-  res.status(201).json({ message: 'Milestone added successfully', milestone: { id: result.insertedId, skill, status } });
-});
 
 // Schedule
 // GET all schedule events for current user
@@ -322,7 +331,6 @@ app.put('/schedule/:id', verifyToken, async (req, res) => {
 
   res.json({ message: 'Event updated', event: result.value });
 });
-
 
 app.get('/comments', async (req, res) => {
   const { componentId } = req.query;
@@ -405,14 +413,10 @@ app.delete('/comments/:id', verifyToken, async (req, res) => {
   res.json({ message: 'Comment deleted' });
 });
 
-
-// Mongo test route
 app.get('/test-mongo', async (req, res) => {
   const result = await getDB().collection('testCollection').insertOne({ msg: 'Mongo is working!' });
   res.json({ message: 'Inserted into MongoDB', id: result.insertedId });
 });
-
-
 
 app.post('/forgot-password', async (req, res) => {
   console.log(' forgot-password endpoint hit');
@@ -422,13 +426,12 @@ app.post('/forgot-password', async (req, res) => {
   const db = getDB();
   const user = await db.collection('users').findOne({ email });
 
-  // Always respond the same to avoid leaking which emails exist
   if (!user) {
     return res.status(200).json({ message: 'If that email exists, a reset link has been sent.' });
   }
 
   const token = crypto.randomBytes(32).toString('hex');
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000); 
 
   await db.collection('passwordResets').insertOne({ userId: user._id, token, expiresAt });
 
@@ -442,7 +445,6 @@ app.post('/forgot-password', async (req, res) => {
   `;
 
   try {
-    // Use your verified sender when ready (e.g., 'no-reply@barkwise.com')
     await sendEmail(email, 'Reset Your Password', html, 'onboarding@resend.dev');
     return res.status(200).json({ message: 'If that email exists, a reset link has been sent.' });
   } catch (error) {
@@ -450,9 +452,6 @@ app.post('/forgot-password', async (req, res) => {
     return res.status(500).json({ message: 'Failed to send email' });
   }
 });
-
-
-
 
 app.post('/reset-password', async (req, res) => {
   console.log(' reset-password endpoint hit');
@@ -483,7 +482,6 @@ app.post('/reset-password', async (req, res) => {
   }
 });
 
-
 // GET all weight entries
 app.get('/dog-weight-history', async (req, res) => {
   const db = getDB();
@@ -512,9 +510,6 @@ app.post('/dog-weight-history', async (req, res) => {
   res.status(201).json({ message: 'Weight entry added' });
 });
 
-
-
-
 app.post('/test-email', async (req, res) => {
   try {
     await sendEmail(
@@ -527,7 +522,6 @@ app.post('/test-email', async (req, res) => {
     res.status(500).json({ message: 'Email failed', error: error.message });
   }
 });
-
 
 app.listen(PORT, () => {
   console.log(` Server running at http://localhost:${PORT}`);
